@@ -8,22 +8,33 @@ def http_date():
     return datetime.now(timezone.utc).strftime("%a, %d %b %Y %H:%M:%S GMT")
 
 INSTRUCOES_RAIZ = """
+Esta atividade tem como objetivo capacitar o aluno a compreender, na prática, o funcionamento do protocolo HTTP e o modelo cliente-servidor por meio do uso da ferramenta de linha de comando curl e análise de pacotes usando o software Wireshark. Durante o laboratório, os alunos irão enviar requisições HTTP manualmente e analisar as respostas do servidor, observando como métodos, cabeçalhos e códigos de status são utilizados na comunicação Web.
+Ao final deste laboratório, o aluno deverá ser capaz de:
 
-Se você digitar apenas curl https://www.google.com no seu terminal, ele vai baixar o código HTML da página e exibir diretamente na sua tela.
+•	Compreender o funcionamento básico do protocolo HTTP no modelo cliente-servidor
+•	Enviar requisições HTTP utilizando diferentes métodos (GET e POST) com a ferramenta curl.
+•	Interpretar códigos de status HTTP (como 200, 401 e 413) retornados por um servidor
+•	Analisar cabeçalhos HTTP presentes nas requisições e respostas usando o Wireshark.
 
-1) Use o metodo GET para acessar este servidor e ler esta mensagem.
 
-2) Em seguida, utilize o metodo POST para enviar:
-   - A senha correta: BOBESPONJA
-   - Uma string qualquer (mensagem livre)
+Sobre a Atividade:
 
-3) A senha deve ser enviada no header:
+* Use o metodo GET (padrão do cURL) para acessar este servidor e ler esta mensagem.
+
+* Na atividade para autenticar, a senha deve ser enviada no header:
    Authorization: Basic BOBESPONJA
 
-4) A string deve ser enviada no corpo da requisicao.
+* O teste de cookie deve ser feito passando o modo=debug
+    cookie: modo=debug
 
-Se a senha estiver correta, o servidor respondera com sucesso.
-Caso contrario, o acesso sera negado.
+
+O cURL pode ser usado para realizar solicitações em qualquer site, assim como solicitar outros serviços (FTP, SMTP, MQTT, etc). Se você digitar apenas curl https://www.google.com no seu terminal, ele vai baixar o código HTML da página e exibir diretamente na sua tela.
+
+Para maiores informações sobre essa atividade
+
+http://IP:8000/help
+http://IP:8000/curl
+http://IP:8000/REF
 """
 
 INSTRUCOES_CURL = """ATIVIDADE DE LABORATORIO - HTTP COM CURL
@@ -77,6 +88,9 @@ Salvando a resposta em um arquivo
 Alterando o Metodo da solicitação
     curl -X POST https://example.com
 
+Verificando toda comunicação HTTP
+    curl -v https://example.com
+
 """
 
 INSTRUCOES_ERRO = """Objeto solicitado não encontrado
@@ -106,6 +120,56 @@ Documentação sobre Curl: https://curl.se
 class ServidorLab(BaseHTTPRequestHandler):
 
     def do_GET(self):
+        
+        cookie = self.headers.get("Cookie")
+                # ativa modo debug
+        if cookie == "modo=debug":
+            status = 200
+            resposta = f"""
+-----------------------
+MODO DEBUG ATIVADO
+
+Metodo HTTP: {self.command}
+URI solicitada: {self.path}
+Endereco do cliente: {self.client_address}
+
+Headers recebidos:
+User-Agent: {self.headers.get('User-Agent')}
+Accept: {self.headers.get('Accept')}
+Cookie: {cookie}
+"""
+        #Se não for acessado o modo debug, o Curl sergue a solicitaçao normal.    
+        else: 
+            if self.path == "/":
+                resposta = INSTRUCOES_RAIZ
+                status = 200
+            elif self.path == "/curl":
+                resposta = INSTRUCOES_CURL
+                status = 200
+            elif self.path == "/REF":
+                resposta = INSTRUCOES_REF
+                status = 200
+            else:
+                if cookie != "modo=debug":
+                    resposta = INSTRUCOES_ERRO
+                    status = 404
+
+
+        corpo = resposta.encode("utf-8")
+
+        self.send_response(status)
+        self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Content-Length", str(len(corpo)))
+        self.send_header("Cache-Control", "no-store")
+        self.send_header("Connection", "close")
+        self.end_headers()
+
+        self.wfile.write(corpo)
+        
+ 
+            
+
+    def do_HEAD(self):
         if self.path == "/":
             corpo = INSTRUCOES_RAIZ.encode("utf-8")
             self.send_response(200)
@@ -142,11 +206,9 @@ class ServidorLab(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(corpo)))
             self.end_headers()
             self.wfile.write(corpo)
-
-
+            
     def do_POST(self):
         auth = self.headers.get("Authorization")
-
 
         try:
             tamanho = int(self.headers.get("Content-Length", 0))
@@ -173,7 +235,6 @@ class ServidorLab(BaseHTTPRequestHandler):
 
         if auth != f"Basic {SENHA_CORRETA}":
             corpo = "Senha incorreta ou ausente.\n".encode("utf-8")
-
             self.send_response(401)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
             self.send_header("Content-Length", str(len(corpo)))
@@ -186,27 +247,26 @@ class ServidorLab(BaseHTTPRequestHandler):
 
             self.wfile.write(corpo)
             return
-
-        resposta = f"""POST RECEBIDO COM SUCESSO
+        else:
+            resposta = f"""POST RECEBIDO COM SUCESSO
 
 Senha correta.
 Mensagem enviada pelo aluno:
 "{mensagem}"
-"""   
-
-        corpo = resposta.encode("utf-8")
-        self.send_response(200)
-        self.send_header("Content-Type", "text/plain; charset=utf-8")
-        self.send_header("Content-Length", str(len(corpo)))
-        self.send_header("Date", http_date())
-        self.send_header("Server", "Python http.server")
-        self.send_header("Connection", "close")
-        self.send_header("Cache-Control", "no-store")
-        self.end_headers()
-
-        self.wfile.write(corpo)
+"""
+            corpo = resposta.encode("utf-8")
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain; charset=utf-8")
+            self.send_header("Content-Length", str(len(corpo)))
+            self.send_header("Date", http_date())
+            self.send_header("Server", "Python http.server")
+            self.send_header("Connection", "close")
+            self.send_header("Cache-Control", "no-store")
+            self.end_headers()
+            self.wfile.write(corpo)
         
         print("Mensagem recebida:", mensagem, "no endereço:", self.client_address)
+
 
     def log_message(self, format, *args):
         return  # silencia log para uso em aula
